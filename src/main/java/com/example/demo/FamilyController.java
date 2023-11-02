@@ -1,5 +1,7 @@
 package com.example.demo;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -14,6 +16,7 @@ import javax.annotation.PostConstruct;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.transaction.Transactional;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -22,21 +25,50 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.*;
 
+import static java.util.logging.LogManager.getLogManager;
+
 @RestController
 @RequestMapping("/api/v1/family")
 public class FamilyController {
     List<Family> familyList = new ArrayList<>();
     List<Member> members = new ArrayList<>();
+    FamilyRepository familyRepository;
+    private static final Logger logger = LogManager.getLogger(FamilyController.class);
 
-    @PostConstruct
-    public void loadFamily(){
-        members.add(new Member("Adam", 18, "M"));
-        members.add(new Member("Katarzyna", 13, "K"));
-        members.add(new Member("Robert", 25, "M"));
-
-        familyList.add(new Family(UUID.randomUUID().toString(), "Kowalski", members));
-        familyList.add(new Family(UUID.randomUUID().toString(), "Nowak", members));
+    public FamilyController(FamilyRepository familyRepository) {
+        this.familyRepository = familyRepository;
     }
+
+    @GetMapping("createFamilyDB")
+    @Transactional
+    public void createFamilyDB(){
+        logger.info("Tworzenie rodziny");
+        FamilyDB familyDB = new FamilyDB(13, "Mostowiak", "Polska", null);
+        logger.info("Utworzono rodzine o id: {}",familyDB.getId());
+        familyRepository.save(familyDB);
+        logger.warn("Zapisano rodzine");
+    }
+
+    @GetMapping("getFamilyDB")
+    public List<FamilyDB> getFamilyDB(){
+        return familyRepository.findByName("Mostowiak", "Polska");
+//        return familyRepository.findById(5L).orElseGet(null);
+    }
+
+    @GetMapping("removeFamilyDB")
+    public void removeFamilyDB(){
+        familyRepository.deleteById(5L);
+    }
+
+//    @PostConstruct
+//    public void loadFamily(){
+//        members.add(new Member("Adam", 18, "M"));
+//        members.add(new Member("Katarzyna", 13, "K"));
+//        members.add(new Member("Robert", 25, "M"));
+//
+//        familyList.add(new Family(UUID.randomUUID().toString(), "Kowalski", members));
+//        familyList.add(new Family(UUID.randomUUID().toString(), "Nowak", members));
+//    }
 
     @RequestMapping(value = "/getAll", method = RequestMethod.GET)
     public List<Family> getAll(HttpServletResponse response){
@@ -53,13 +85,15 @@ public class FamilyController {
     }
 
     @RequestMapping(value = "/create", method = RequestMethod.POST)
-    public void createFamily(@RequestBody Family family, HttpServletResponse response) throws IOException {
+    public ResponseEntity<String> createFamily(@RequestBody Family family, HttpServletResponse response) throws IOException {
+        if (family.getName().length() < 2) {
+            throw new FamilyLengthException("Pusta nazwa");
+        }
         if (family.getName() != null && !family.getMembers().isEmpty()){
             familyList.add(family);
-            response.sendError(HttpServletResponse.SC_OK, "Dodano do listy.");
-            return;
+            return new ResponseEntity<>("Dodano do listy.", HttpStatus.OK);
         }
-        response.sendError(HttpServletResponse.SC_CONFLICT, "Nazwa rodziny nie może być pusta oraz lista członków nie może być mniejsza niż 1.");
+        return null;
     }
     @RequestMapping(value = "/edit/{id}", method = RequestMethod.PATCH, consumes = "application/json")
     public void editFamily(@RequestBody Map<Object, Object> fields, @PathVariable String id, HttpServletResponse response) throws IOException {
